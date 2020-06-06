@@ -1,0 +1,13 @@
+name: analogger
+version: 0.1.0
+
+authors:
+  - Kirk Haines <wyhaines@gmail.com>
+
+targets:
+  analogger:
+    main: src/analogger.cr
+
+crystal: 0.34.0
+
+license: MIT
