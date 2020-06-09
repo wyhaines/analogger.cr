@@ -24,7 +24,7 @@ module Analogger
   class Config
     include YAML::Serializable
     include YAML::Serializable::Unmapped
-    
+
     @[YAML::Field(key: "port")]
     property port : String = "6766"
 

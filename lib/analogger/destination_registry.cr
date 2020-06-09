@@ -5,7 +5,7 @@ module Analogger
     @@name_to_class_map = {} of String => Analogger::Destination.class
 
     def self.register(name, klass)
-      @@name_to_class_map[name[/Analogger::Destination::(.*)/,1].downcase] = klass
+      @@name_to_class_map[name[/Analogger::Destination::(.*)/, 1].downcase] = klass
     end
 
     def self.registry

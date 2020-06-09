@@ -4,6 +4,8 @@ require "analogger/core/exec_arguments"
 require "analogger/timer"
 require "analogger/destination_registry"
 require "analogger/destination/file"
+require "socket"
+require "analogger/protocol"
 
 struct Number
   def positive?
@@ -23,6 +25,7 @@ module Analogger
 
     property config : Config
     property invocation_arguments : ExecArguments
+    property key : String
     class_property default_log : String = "STDOUT"
     class_property default_log_destination : Analogger::Destination::File | IO::FileDescriptor | Nil
 
@@ -43,10 +46,11 @@ module Analogger
     RESTART_SIGNALS = [Signal::USR2]
 
     def initialize(command_line : CommandLine)
+      @key = ""
       @config = command_line.config
       @invocation_arguments = ExecArguments.new(command: File.expand_path(PROGRAM_NAME), args: ARGV)
       @logs = Hash(String, Log).new { |h, k| h[k] = Log.new(service: k) }
-      @queue = Hash(String, Array(String)).new { |h, k| h[k] = [] of String }
+      @queue = Hash(String, Array(Tuple(String, String, String))).new { |h, k| h[k] = [] of Tuple(String, String, String) }
       @rcount = 0
       @wcount = 0
       @now = Time.local
@@ -61,14 +65,43 @@ module Analogger
       set_config_defaults
       create_periodic_timers
 
-      puts "Start me with #{config.inspect}"
-      puts "LOGS: #{@logs.inspect}"
+      server = TCPServer.new(
+        host: @config.host,
+        port: @config.port.to_i,
+        reuse_port: true
+      )
+
+      while client = server.accept?
+        spawn handle(client)
+      end
+    end
+
+    def handle(client)
+      # Or this way?
+      #     client.sync = false if client.responds_to?(:sync=)
+      #if client.is_a?(IO::Buffered)
+      #  client.sync = false
+      #end
+      #     client.read_buffering = true if client.responds_to?(:read_buffering)
+
+      handler = Analogger::Protocol.new(client: client, logger: self)
+      until client.closed?
+        handler.receive
+      end
+    ensure
+      client.close rescue IO::Error
+    end
+
+    def add_log(log)
+      @queue[log.first] << log
+      @rcount += 1
     end
 
     def setup_signal_traps
       safe_trap(signal_list: EXIT_SIGNALS) { handle_pending_and_exit }
       safe_trap(signal_list: RELOAD_SIGNALS) { cleanup_and_reopen }
       safe_trap(signal_list: RESTART_SIGNALS) do
+        purge_queues
         Process.exec(
           command: invocation_arguments.command,
           args: invocation_arguments.args
@@ -188,28 +221,106 @@ module Analogger
       @write_queue_timer = Analogger::Timer.new(
         interval: @config.interval.to_i,
         periodic: true
-        ) { write_queue }
+      ) { write_queue }
       @flush_queue_timer = Analogger::Timer.new(
         interval: @config.syncinterval.to_i,
         periodic: true
-        ) { flush_queue }
+      ) { flush_queue }
     end
 
     def write_queue
+      @queue.each do |service, q|
+        last_s = ""
+        last_l = ""
+        last_m = ""
+        last_count = 0
+        next unless (log = @logs[service])
+
+        lf = log.destination
+        unless lf.nil?
+          cull = log.cull
+          levels = log.levels
+
+          q.each do |m|
+            next unless levels.has_key?(m[1])
+
+            if cull
+              if m.last == last_m && m[0] == last_s && m[1] == last_l
+                last_count += 1
+                next
+              elsif last_count.positive?
+                lf.print "#{@now}|#{last_s}|#{last_l}|Last message repeated #{last_count} times\n"
+                last_count = 0
+              end
+              lf.print "#{@now}|#{m.join('|')}\n"
+              last_m = m.last
+              last_s = m[0]
+              last_l = m[1]
+            else
+              lf.print "#{@now}|#{m.join('|')}\n"
+            end
+            @wcount += 1
+          end
+
+          if cull && last_count.positive?
+            lf.print "#{@now}|#{last_s}|#{last_l}|Last message repeated #{last_count} times\n"
+          end
+        end
+      end
+      @queue.each { |_service, q| q.clear }
     end
 
     def flush_queue
+      @logs.each_value do |l|
+        if !(dest = l.destination).nil?
+          if !dest.closed? && dest.responds_to?(:fsync)
+            dest.fsync
+          end
+        end
+      end
+    end
+
+    def any_in_queue?
+      any = 0
+      @queue.each do |service, q|
+        next unless (log = @logs[service])
+
+        levels = log.levels
+        q.each do |m|
+          next unless levels.has_key?(m[1])
+
+          any += 1
+        end
+      end
+      any.positive? ? any : false
+    end
+
+    def purge_queues
+      write_queue if any_in_queue?
+      flush_queue
+      cleanup
     end
 
     def handle_pending_and_exit
+      STDOUT.puts "Caught termination signal. Exiting..." #TODO: Add better signal handling notifcations
+      purge_queues
+      exit
+    end
+
+    def fsync_or_flush(dest)
+      if !dest.closed?
+        if dest.responds_to?(:fsync)
+          dest.fsync
+        elsif dest.responds_to?(:flush)
+          dest.flush
+        end
+      end
     end
 
     def cleanup
       @logs.each do |_service, l|
         if !(dest = l.destination).nil?
-          if dest.closed? && dest.responds_to?(:fsync)
-            dest.fsync
-          end
+          fsync_or_flush(dest)
           dest.close unless dest.closed? || [STDERR, STDOUT].includes?(dest)
         end
       end
@@ -218,9 +329,7 @@ module Analogger
     def cleanup_and_reopen
       @logs.each do |_service, l|
         if !(dest = l.destination).nil?
-          if dest.closed? && dest.responds_to?(:fsync)
-            dest.fsync
-          end
+          fsync_or_flush(dest)
           if dest.responds_to?(:reopen)
             dest.reopen(dest) if ![STDERR, STDOUT].includes?(dest)
           end
