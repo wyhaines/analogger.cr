@@ -1,6 +1,10 @@
 # analogger
 
-TODO: Write a description here
+Analogger is an asynchronous client/server log aggregation tool. It was originally
+written in Ruby in 2007. This is a Crystal Language port of it. Work is being done
+concurrently with the [Ruby version](https://github.com/wyhaines/analogger) to switch it to using msgpack for it's base
+data transfer protocol, and to ensure that the Crystal and the Ruby versions have
+compatibility in both function and features.
 
 ## Installation
 
@@ -24,4 +28,4 @@ TODO: Write development instructions here
 
 ## Contributors
 
-- [Kirk Haines](https://github.com/your-github-user) - creator and maintainer
+- [Kirk Haines](https://github.com/wyhaines) - creator and maintainer
