@@ -1,11 +1,11 @@
-require "analogger/core/daemonize"
-require "analogger/core/log"
-require "analogger/core/exec_arguments"
-require "analogger/timer"
-require "analogger/destination_registry"
-require "analogger/destination/file"
+require "./core/daemonize"
+require "./core/log"
+require "./core/exec_arguments"
+require "./timer"
+require "./destination_registry"
+require "./destination/file"
 require "socket"
-require "analogger/protocol"
+require "./protocol"
 
 struct Number
   def positive?

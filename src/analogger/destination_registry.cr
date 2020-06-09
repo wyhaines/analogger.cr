@@ -1,4 +1,4 @@
-require "analogger/destination"
+require "./destination"
 
 module Analogger
   class DestinationRegistry

@@ -1,5 +1,5 @@
 require "yaml"
-require "analogger/config/log"
+require "./config/log"
 
 # port: 47990
 # host: 127.0.0.1

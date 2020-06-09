@@ -1,4 +1,4 @@
-require "analogger/version"
-require "analogger/exec"
+require "./analogger/version"
+require "./analogger/exec"
 
 Analogger::Exec.run

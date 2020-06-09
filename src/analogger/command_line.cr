@@ -1,6 +1,6 @@
 require "yaml"
 require "option_parser"
-require "analogger/config"
+require "./config"
 
 module Analogger
   class CommandLine
@@ -74,7 +74,7 @@ module Analogger
           STDERR.puts opts
           exit(1)
         end
-      end.parse!
+      end.parse
 
       puts
       config

@@ -1,5 +1,5 @@
-require "analogger/command_line"
-require "analogger/core"
+require "./command_line"
+require "./core"
 
 module Analogger
   class Exec
